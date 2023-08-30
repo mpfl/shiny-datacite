@@ -1,6 +1,8 @@
 library(httr)
+library(purrr)
+library(rlist)
 library(shiny)
-library(tidyjson)
+#library(tidyjson)
 
 ui <- fluidPage(
   titlePanel("Shiny DataCite stats"),
@@ -35,16 +37,16 @@ server <- function(input, output, session) {
   
   # Reactive functions
   
-  clients <- reactive({
-#    url <- "https://api.datacite.org/clients"
-#    queryString <- list("provider-id" = input$legacy)
-#    response <- VERB("GET", url, query = queryString, content_type("application/octet-stream"), accept("application/vnd.api+json"))
-#    content(response, "parsed")[[1]]
-    sort(sapply(providers()[[input$legacy]], function(x) x[["relationships"]][["clients"]][["data"]][["id"]]))
+  allClientIds <- reactive({
+    providers() %>% map(~ .$relationships$clients$data) %>% map_depth(2, ~ .$id) %>% unlist %>% sort
   })
   
   clientIds <- reactive({
-    sort(sapply(clients(), function(x) x[["id"]]))
+    providers() %>% list.filter(id==input$legacy) %>% map(~ .$relationships$clients$data) %>% map_depth(2, ~ .$id) %>% unlist %>% sort
+  })
+  
+  allProviders <- reactive({
+    providers() %>% map(~ .[["id"]])
   })
   
   providers <- reactive({
@@ -55,18 +57,20 @@ server <- function(input, output, session) {
   })
   
   providerIds <- reactive({
-    providers() %>% spread_all() %>% .$id %>% sort
+    providers() %>% map(~ .$id)
   })
   
   providerNames <- reactive({
-    providers() %>% spread_all() %>% .$attributes.name %>% sort
+    providers() %>% map(~ .$attributes$name)
   })
   
   memberCount <- reactive({
-    if ((input$consortium != "none") && (input$legacy == "none")) {
+    if ((input$consortium == "none")) {
+      0
+    } else if ((input$consortium != "none") && (input$legacy == "none")) {
       length(providerNames())
     } else if ((input$consortium != "none") && (input$legacy != "none")) {
-      length(providers()) + length(clients()) - input$own
+      length(providers()) + length(clientIds()) - input$own
     }
   })
   
@@ -90,7 +94,9 @@ server <- function(input, output, session) {
   })
   
   output$debug <- renderPrint({
-    providers() %>% spread_all()
+    if (input$legacy != "none")  {
+      
+    }
   })
   
 }
