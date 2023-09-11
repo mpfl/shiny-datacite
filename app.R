@@ -27,7 +27,8 @@ ui <- fluidPage(
   verbatimTextOutput("providers"),
   verbatimTextOutput("clients"),
   verbatimTextOutput("debug"),
-  plotOutput("clientTypePie")
+  plotOutput("clientTypePie"),
+  plotOutput("yearlyPublishedStats")
 )
 server <- function(input, output, session) {
 
@@ -38,9 +39,9 @@ server <- function(input, output, session) {
       updateSelectInput(inputId = "legacy", choices = c("Select a consortium first" = "none"))
     } else {
       updateSelectInput(inputId = "legacy", choices = append("none", providerIds()))
-    }
+   }
   })
-  
+
   # Normal functions
   
   getClientData <- function(provider) {
@@ -49,6 +50,7 @@ server <- function(input, output, session) {
     response <- VERB("GET", url, query = queryString, content_type("application/octet-stream"), accept("application/vnd.api+json"))
     content(response, "parsed")[[1]]
   }
+  
   
   # Reactive functions
   
@@ -70,12 +72,23 @@ server <- function(input, output, session) {
   allProviders <- reactive({
     providers() %>% map(~ .[["id"]])
   })
+
+  consortiumStats <- reactive({
+    url <- "https://api.datacite.org/dois"
+    queryString <- list("consortium-id" = input$consortium, "page[size]" = 1)
+    response <- VERB("GET", url, query = queryString, content_type("application/octet-stream"), accept("application/vnd.api+json"))
+    content(response, "parsed")$meta
+  })
   
-  providers <- reactive({
+  getProviderData <- reactive({
     url <- "https://api.datacite.org/providers"
     queryString <- list("consortium-id" = input$consortium, "page[size]" = 1000)
     response <- VERB("GET", url, query = queryString, content_type("application/octet-stream"), accept("application/vnd.api+json"))
-    content(response, "parsed")[[1]]
+    content(response, "parsed")    
+  })
+    
+  providers <- reactive({
+    getProviderData()[[1]]
   })
   
   clientData <- reactive({
@@ -120,13 +133,19 @@ server <- function(input, output, session) {
   
   output$clientTypePie <- renderPlot({
     if (input$consortium != "none") {
-      allClientData() %>% map_depth(2, ~ .$attributes$clientType) %>% unlist %>% table %>% as.data.frame %>% ggplot(aes(x="", y=Freq, fill=.)) +
-        geom_bar(stat="identity", width=1) +
-        coord_polar("y", start=0)
+      allClientData() %>% map_depth(2, ~ .$attributes$clientType) %>% unlist %>% table %>% as.data.frame %>% ggplot(aes(x="", y=Freq, fill=.)) + geom_bar(stat="identity", width=1) + coord_polar("y", start=0)
     }
   })
   
-  #output$debug <- renderPrint({})
+  output$yearlyPublishedStats <- renderPlot({
+    if (input$consortium != "none") {
+      yearlyPublishedStats <- data.frame("year" = consortiumStats() %>% .$published %>% map(~ .$id) %>% unlist, "count" = consortiumStats() %>% .$published %>% map(~ .$count) %>% unlist)
+      published <- ggplot(yearlyPublishedStats, aes(year, count))
+      published + geom_col(fill = "#FF9999", colour="black") + labs(title = "DOIs published per year", colour = blues9) + xlab("Year") + ylab("DOIs published")
+    }
+  })
+  
+  #output$debug <- renderPrint({  })
   
 }
 shinyApp(ui, server)
